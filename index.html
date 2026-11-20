@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>会议演示</title>
+<style>
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: #eeece5; color: #252321; font: 16px/1.6 "Microsoft YaHei", system-ui, sans-serif; }
+main { min-height: 100%; display: grid; place-content: center; padding: 28px; }
+p { margin: 0; border-left: 3px solid #e45827; padding: 6px 16px; max-width: 32em; }
+iframe { display: block; width: 100%; height: 100%; border: 0; background: #eeece5; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main><p id="status" role="status">正在打开会议演示…</p></main>
+<script>
+(async function openPresentation() {
+  const status = document.getElementById('status');
+  const sharedKey = new URLSearchParams(location.hash.slice(1)).get('k');
+  if (!sharedKey || !/^[A-Za-z0-9_-]{43}$/.test(sharedKey)) {
+    status.textContent = '请打开同事分享的完整链接，保留网址中 # 后面的部分。';
+    return;
+  }
+  if (!window.crypto || !crypto.subtle) {
+    status.textContent = '请在支持加密网页的现代浏览器中，用 HTTPS 打开完整链接。';
+    return;
+  }
+  let payload;
+  try {
+    const response = await fetch('report.sealed');
+    if (!response.ok) throw new Error('Unavailable');
+    payload = new Uint8Array(await response.arrayBuffer());
+  } catch {
+    status.textContent = '演示文件暂时未能加载，请检查网络后刷新。';
+    return;
+  }
+  try {
+    const base64 = sharedKey.replace(/-/g, '+').replace(/_/g, '/') + '=';
+    const rawKey = Uint8Array.from(atob(base64), value => value.charCodeAt(0));
+    const key = await crypto.subtle.importKey('raw', rawKey, 'AES-GCM', false, ['decrypt']);
+    const plain = await crypto.subtle.decrypt(
+      {name: 'AES-GCM', iv: payload.subarray(0, 12)}, key, payload.subarray(12)
+    );
+    const frame = document.createElement('iframe');
+    frame.title = '会议演示';
+    frame.allowFullscreen = true;
+    frame.referrerPolicy = 'no-referrer';
+    frame.addEventListener('load', () => { frame.focus(); }, {once:true});
+    frame.srcdoc = new TextDecoder().decode(plain);
+    document.querySelector('main').hidden = true;
+    document.body.append(frame);
+  } catch {
+    status.textContent = '无法解锁这份演示，请重新打开同事分享的完整链接。';
+  }
+})();
+</script>
+</body>
+</html>
